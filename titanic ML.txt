@@ -1,0 +1,174 @@
+import numpy as np 
+import pandas as pd
+import seaborn as sns
+sns.set(palette='colorblind')
+import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, LabelEncoder
+from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline 
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+import xgboost as xgb
+from sklearn.compose import ColumnTransformer
+from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
+from sklearn.model_selection import cross_val_predict, RandomizedSearchCV, GridSearchCV
+
+raw_data = pd.read_csv('titanic.csv')
+raw_data.head()
+
+raw_data.info()
+
+# Checkpoint
+data = raw_data.copy()
+# Dropping Name and Cabin
+data.drop(['Name', 'Cabin'], axis=1, inplace=True)
+# Column to change list
+column_to_change = ['Pclass', 'SibSp', 'Parch']
+data[column_to_change] = data[column_to_change].apply(lambda x: x.astype('category'))
+# Instantiate LabelEncoder
+lb_encode = LabelEncoder()
+data['Ticket'] = lb_encode.fit_transform(data['Ticket'])
+# Set Passenger_id as index
+data = data.set_index('PassengerId')
+data.head()
+
+def validation_fun(df):
+    df.drop(['Name', 'Cabin'], axis=1, inplace=True)
+    # Column to change list
+    column_to_change = ['Pclass', 'SibSp', 'Parch']
+    df[column_to_change] = df[column_to_change].apply(lambda x: x.astype('category'))
+    # Instantiate LabelEncoder
+    lb_encode = LabelEncoder()
+    df['Ticket'] = lb_encode.fit_transform(df['Ticket'])
+    # Set Passenger_id as index
+    df = df.set_index('PassengerId')
+    return df
+
+# Split data into inputs and targets
+targets = data['Survived']
+inputs = data.drop('Survived', axis=1)
+
+cat_names = inputs.select_dtypes(exclude='number').columns
+num_names = inputs.select_dtypes(include='number').columns
+
+cat_pipeline = Pipeline(
+                        [
+                            ('cat_imputer', SimpleImputer(strategy='most_frequent')),
+                            ('encoder', OneHotEncoder())
+                        ]
+)
+num_pipeline = Pipeline(
+                        [
+                            ('num_imputer', SimpleImputer(strategy='median')),
+                            ('scaler', StandardScaler())
+                        ]
+)
+full_pipeline = ColumnTransformer(
+                                  [
+                                      ('cat_pipeline', cat_pipeline, cat_names),
+                                      ('num_pipeline', num_pipeline, num_names)
+                                  ]
+)
+pca = PCA()
+inputs_scaled = full_pipeline.fit_transform(inputs)
+
+# Instantiate LogisticRegression
+lg_reg = LogisticRegression()
+lg_reg.fit(inputs_scaled, targets)
+baseline_pred = lg_reg.predict(inputs_scaled)
+baseline_accuracy = accuracy_score(targets, baseline_pred)
+baseline_precision = precision_score(targets, baseline_pred)
+baseline_recall = recall_score(targets, baseline_pred)
+print(f'The baseline accuracy is {round(baseline_accuracy, 2)*100}%')
+print(f'The baseline precision is {round(baseline_precision, 2)*100}%')
+print(f'The baseline recall is {round(baseline_recall, 2)*100}%')
+
+# Instantiate XGBClassifier
+xgb_class = xgb.XGBClassifier(n_estimators=50, seed=42, objective='reg:logistic')
+xgb_class.fit(inputs_scaled, targets)
+xgb_pred = xgb_class.predict(inputs_scaled)
+xgb_accuracy = accuracy_score(targets, xgb_pred)
+xgb_precision = precision_score(targets, xgb_pred)
+xgb_recall = recall_score(targets, xgb_pred)
+print(f'The XGBClassifier accuracy is {round(xgb_accuracy, 2)*100}%')
+print(f'The XGBClassifier precision is {round(xgb_precision, 2)*100}%')
+print(f'The XGBClassifier recall is {round(xgb_recall, 2)*100}%')
+
+# Instantiate RandomForestClassifier
+rf_class = RandomForestClassifier(n_estimators=200, random_state=42)
+rf_class.fit(inputs_scaled, targets)
+rf_pred = rf_class.predict(inputs_scaled)
+rf_accuracy = accuracy_score(targets, rf_pred)
+rf_precision = precision_score(targets, rf_pred)
+rf_recall = recall_score(targets, rf_pred)
+print(f'The RandomForestClassifier accuracy is {round(rf_accuracy, 2)*100}%')
+print(f'The RandomForestClassifier precision is {round(rf_precision, 2)*100}%')
+print(f'The RandomForestClassifier recall is {round(rf_recall, 2)*100}%')
+
+
+# Instantiate GradientBoostingClassifier
+gb_class = GradientBoostingClassifier(n_estimators=200, random_state=42)
+gb_class.fit(inputs_scaled, targets)
+gb_pred = gb_class.predict(inputs_scaled)
+gb_accuracy = accuracy_score(targets, gb_pred)
+gb_precision = precision_score(targets, gb_pred)
+gb_recall = recall_score(targets, gb_pred)
+print(f'The GradientBoostingClassifier accuracy is {round(gb_accuracy, 2)*100}%')
+print(f'The GradientBoostingClassifier precision is {round(gb_precision, 2)*100}%')
+print(f'The GradientBoostingClassifier recall is {round(gb_recall, 2)*100}%')
+
+# Hyper parameter tunning of GradientBoostingClassifier
+params = {
+    "n_estimators":[5,50,250,500],
+    "max_depth":[1,3,5,7,9],
+    "learning_rate":[0.01,0.1,1,10,100]
+}
+gb_cv = RandomizedSearchCV(estimator=gb_class, param_distributions=params,scoring='accuracy', cv=5)
+gb_cv.fit(inputs_scaled, targets)
+print(f'The best accuracy of GradientBoostingClassifier is {gb_cv.best_score_}')
+
+params = {
+    "n_estimators":[64, 128, 256],
+    "max_depth":[2, 8, 16]
+}
+rf_cv = GridSearchCV(estimator=rf_class, param_grid=params,
+                               scoring='accuracy', cv=5)
+rf_cv.fit(inputs_scaled, targets)
+print(f'The best accuracy of RandomForestClassifier is {rf_cv.best_score_}')
+
+# Hyper-parameter tunning of XGBClassifier
+params = {
+    "learning_rate": np.arange(0.05, 1.05, 0.05),
+    "subsample": np.arange(0.05, 1.05, 0.05),
+    "n_estimators": [100,200,300,400,500]
+}
+xgb_cv = RandomizedSearchCV(estimator=xgb_class, param_distributions=params, n_iter=25,
+                               scoring='accuracy', cv=5, verbose=1)
+xgb_cv.fit(inputs_scaled, targets)
+print(f'The best accuracy of XGBClassifier is {xgb_cv.best_score_}')
+
+cv_pred = cross_val_predict(xgb_cv.best_estimator_, inputs_scaled, targets)
+cv_accuracy = accuracy_score(targets, cv_pred)
+cv_precision = precision_score(targets, cv_pred)
+cv_recall = recall_score(targets, cv_pred)
+print(f'The Evaluation accuracy is {round(cv_accuracy, 2)*100}%')
+print(f'The Evaluation precision is {round(cv_precision, 2)*100}%')
+print(f'The Evaluation recall is {round(cv_recall, 2)*100}%')
+
+# Load the test Data 
+test_set = pd.read_csv('titanic.csv')
+test_set['Parch'] = np.where(test_set['Parch']==9, np.nan, test_set['Parch'])
+test_set_data = validation_fun(test_set)
+test_scaled = full_pipeline.transform(test_set_data)
+
+best_model = xgb_cv.best_estimator_
+
+test_pred = xgb_class.predict(test_scaled)
+submission_df = pd.DataFrame()
+submission_df['PassengerId'] = test_set_data.index
+submission_df['Survived'] = test_pred
+submission_df.set_index('PassengerId', inplace=True)
+submission_df.head()
+
+submission_df.to_csv('submission.csv')

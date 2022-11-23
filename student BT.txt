@@ -1,0 +1,44 @@
+// SPDX-License-Identifier: MIT
+
+
+pragma solidity 0.8.7;
+
+
+contract School
+{
+
+    struct Student{
+        string name;
+        uint256 id;
+    }
+
+    uint256 public fallbackCount;
+    
+    Student[] public students_data; 
+
+    constructor(){
+        fallbackCount=0;
+    }
+    
+    function addStudent(string calldata name, uint256 id) public{
+        students_data.push(Student(name ,id));
+    }
+
+    fallback() external {
+        fallbackCount=fallbackCount+1;
+    }
+
+}
+
+contract StudentFunction{
+
+    function deleteCountry() public {
+        School group1= School(msg.sender);
+        interfaceA(address(group1)).dontExist();
+    }
+
+}
+
+abstract contract interfaceA{
+    function dontExist() external virtual;
+}
